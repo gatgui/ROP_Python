@@ -20,6 +20,7 @@
 ROP_Python::ROP_Python(OP_Network* net, const char* name, OP_Operator* op)
     : ROP_Node(net, name, op)
     , mPerFrame(false)
+    , mLastRenderedTime(0.0)
 {
 }
 
@@ -37,6 +38,8 @@ int ROP_Python::startRender(int nframes, fpreal s, fpreal e)
 
 ROP_RENDER_CODE ROP_Python::renderFrame(fpreal time, UT_Interrupt* boss)
 {
+    mLastRenderedTime = time;
+    
     if (mPerFrame)
     {
         PY_InterpreterAutoLock interpreter_lock;
@@ -53,10 +56,19 @@ ROP_RENDER_CODE ROP_Python::endRender()
 {
     if (!mPerFrame)
     {
-        PY_InterpreterAutoLock interpreter_lock;
-        if (PY_PyRun_SimpleString(mScript.nonNullBuffer()) != 0)
+        // When rendering a frame range "frame-by-frame" with input dependencies
+        //   Houdini calls startRender/renderFrame/endRender for each frame...
+        // Need to avoid calling script until the final frame
+        OP_Context ctx;
+        ctx.setFrame(FEND());
+        
+        if (!getFrameByFrameFlag() || mLastRenderedTime >= ctx.getTime())
         {
-            return ROP_ABORT_RENDER;
+            PY_InterpreterAutoLock interpreter_lock;
+            if (PY_PyRun_SimpleString(mScript.nonNullBuffer()) != 0)
+            {
+                return ROP_ABORT_RENDER;
+            }
         }
     }
     

@@ -17,6 +17,7 @@ private:
 
     bool mPerFrame;
     UT_String mScript;
+    fpreal mLastRenderedTime;
 
 public:
 
