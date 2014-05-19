@@ -127,12 +127,14 @@ DLLEXPORT void newDriverOperator(OP_OperatorTable* table)
 {
     static StaticInitializer sOneTimeInit;
     
-    table->addOperator(new OP_Operator("ROP_Python",
-                                       "Python",
-                                       ROP_Python::Create,
-                                       ROP_Python::Parameters,
-                                       1,
-                                       1,
-                                       ROP_Python::Variables,
-                                       0));
+    OP_Operator *op = new OP_Operator("ROP_Python",
+                                      "Python",
+                                      ROP_Python::Create,
+                                      ROP_Python::Parameters,
+                                      1,
+                                      1,
+                                      ROP_Python::Variables,
+                                      0);
+    op->setIconName("SOP_python");
+    table->addOperator(op);
 }
