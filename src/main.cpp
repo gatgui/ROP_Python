@@ -39,7 +39,7 @@ int ROP_Python::startRender(int nframes, fpreal s, fpreal e)
     
     if (!mPerFrame)
     {
-        mSingleCallTiming = (CallTiming) evalFloat("timing", 0, s);
+        mSingleCallTiming = (CallTiming) int(evalFloat("timing", 0, s));
     }
     
     evalString(mScript, "script", 0, s);
