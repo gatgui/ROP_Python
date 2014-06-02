@@ -4,6 +4,12 @@
 class ROP_Python : public ROP_Node
 {
 public:
+    
+    enum CallTiming
+    {
+        FirstFrame = 0,
+        LastFrame
+    };
 
     ROP_Python(OP_Network* net, const char* name, OP_Operator* op);
     virtual ~ROP_Python();
@@ -18,6 +24,7 @@ private:
     bool mPerFrame;
     UT_String mScript;
     fpreal mLastRenderedTime;
+    CallTiming mSingleCallTiming;
 
 public:
 
@@ -26,6 +33,9 @@ public:
     static PRM_Default ParameterDefaults[];
     static PRM_Template Parameters[];
     static CH_LocalVariable Variables[];
+    static PRM_Name TimingNames[];
+    static PRM_ChoiceList TimingChoiceList;
+    static PRM_Conditional TimingCondition;
     
     static OP_Node* Create(OP_Network *net, const char *name, OP_Operator *op);
 };
