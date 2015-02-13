@@ -2,6 +2,7 @@
 #include <UT/UT_DSOVersion.h>
 #include <UT/UT_Interrupt.h>
 #include <UT/UT_String.h>
+#include <UT/UT_Version.h>
 #include <ROP/ROP_Node.h>
 #include <ROP/ROP_Templates.h>
 #include <PRM/PRM_Include.h>
@@ -166,7 +167,11 @@ public:
     {
         ROP_Python::PythonEditor.mergeFrom(PRM_SpareData::stringEditor);
         ROP_Python::PythonEditor.mergeFrom(PRM_SpareData::stringEditorLangPython);
+#if UT_MAJOR_VERSION_INT < 14
         ROP_Python::PythonEditor.addTokenValue(PRM_SpareData::getEditorLinesToken(), "20");
+#else
+        ROP_Python::PythonEditor.addTokenValue(PRM_SpareData::getEditorLinesRangeToken(), "20");
+#endif
     }
     
     ~StaticInitializer()
