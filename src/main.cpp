@@ -13,9 +13,6 @@
 #include <OP/OP_OperatorTable.h>
 #include <HOM/HOM_Module.h>
 #include <string>
-#include <PY/PY_Python.h>
-#include <PY/PY_API.h>
-#include <PY/PY_CPythonAPI.h>
 #include "main.h"
 
 // ---
@@ -34,56 +31,52 @@ ROP_Python::~ROP_Python()
 
 int ROP_Python::startRender(int nframes, fpreal s, fpreal e)
 {
-    //std::cout << "ROP_Python::startRender " << nframes << ", " << s << ", " << e << std::endl;
+    #ifdef _DEBUG
+    std::cout << getName() << " | ROP_Python::startRender " << nframes << ", " << s << ", " << e << std::endl;
+    #endif
     
-    mPerFrame = (evalFloat("run_per_frame", 0, s) > 0.0);
+    UT_String script;
     
-    if (!mPerFrame)
+    bool perframe = (evalFloat("run_per_frame", 0, s) > 0.0);
+    CallTiming timing = (CallTiming) int(evalFloat("timing", 0, s));
+    evalString(script, "script", 0, s);
+    
+    if (mPerFrame != perframe || timing != mSingleCallTiming || script != mScript)
     {
-        mSingleCallTiming = (CallTiming) int(evalFloat("timing", 0, s));
+        mPerFrame = perframe;
+        mSingleCallTiming = timing;
+        mScript = script;
+        
+        setString((!perframe && timing == FirstFrame ? mScript : UT_String()), CH_STRING_LITERAL, "prerender", 0, s);
+        setString((perframe ? mScript : UT_String()), CH_STRING_LITERAL, "preframe", 0, s);
+        setString((!perframe && timing == LastFrame ? mScript : UT_String()), CH_STRING_LITERAL, "postrender", 0, s);
     }
-    
-    evalString(mScript, "script", 0, s);
     
     return 1;
 }
 
 ROP_RENDER_CODE ROP_Python::renderFrame(fpreal time, UT_Interrupt* boss)
 {
-    //std::cout << "ROP_Python::renderFrame " << time << std::endl;
+    #ifdef _DEBUG
+    std::cout << getName() << " | ROP_Python::renderFrame " << time << std::endl;
+    #endif
     
     mLastRenderedTime = time;
     
     if (mPerFrame)
     {
-        //std::cout << "  Execute script" << std::endl;
-        PY_InterpreterAutoLock interpreter_lock;
-        if (PY_PyRun_SimpleString(mScript.nonNullBuffer()) != 0)
-        {
-            return ROP_ABORT_RENDER;
-        }
+        executePreFrameScript(time);
     }
     else
     {
-        //std::cout << "  DORANGE=" << DORANGE() << ", RANGE=[" << FSTART() << ", " << FEND() << "]" << std::endl;
-        
-        // When rendering a frame range "frame-by-frame" with input dependencies
-        //   Houdini calls startRender/renderFrame/endRender for each frame...
-        // Need to avoid calling script for any other frame than first or last (as specified by timing parm)
-        
         if (mSingleCallTiming == FirstFrame)
         {
             OP_Context ctx;
             ctx.setFrame(FSTART());
             
-            if (DORANGE() == 0 || mLastRenderedTime <= ctx.getTime())
+            if (DORANGE() == 0 || time <= ctx.getTime())
             {
-                //std::cout << "  Execute script" << std::endl;
-                PY_InterpreterAutoLock interpreter_lock;
-                if (PY_PyRun_SimpleString(mScript.nonNullBuffer()) != 0)
-                {
-                    return ROP_ABORT_RENDER;
-                }
+                executePreRenderScript(time);
             }
         }
         else if (mSingleCallTiming == LastFrame)
@@ -91,14 +84,9 @@ ROP_RENDER_CODE ROP_Python::renderFrame(fpreal time, UT_Interrupt* boss)
             OP_Context ctx;
             ctx.setFrame(FEND());
             
-            if (DORANGE() == 0 || mLastRenderedTime >= ctx.getTime())
+            if (DORANGE() == 0 || time >= ctx.getTime())
             {
-                //std::cout << "  Execute script" << std::endl;
-                PY_InterpreterAutoLock interpreter_lock;
-                if (PY_PyRun_SimpleString(mScript.nonNullBuffer()) != 0)
-                {
-                    return ROP_ABORT_RENDER;
-                }
+                executePostRenderScript(time);
             }
         }
     }
@@ -108,7 +96,9 @@ ROP_RENDER_CODE ROP_Python::renderFrame(fpreal time, UT_Interrupt* boss)
 
 ROP_RENDER_CODE ROP_Python::endRender()
 {
-    //std::cout << "ROP_Python::endRender" << std::endl;
+    #ifdef _DEBUG
+    std::cout << getName() << " | ROP_Python::endRender" << std::endl;
+    #endif
     
     return ROP_CONTINUE_RENDER;
 }
@@ -147,6 +137,18 @@ PRM_Template ROP_Python::Parameters[] = {
     PRM_Template(PRM_STRING, 1, &ROP_Python::ParameterNames[0], &ROP_Python::ParameterDefaults[0], 0, 0, 0, &ROP_Python::PythonEditor),
     PRM_Template(PRM_TOGGLE, 1, &ROP_Python::ParameterNames[1], &ROP_Python::ParameterDefaults[1]),
     PRM_Template(PRM_TYPE_ORDINAL, 1, &ROP_Python::ParameterNames[2], &ROP_Python::ParameterDefaults[2], &ROP_Python::TimingChoiceList, 0, 0, 0, 1, 0, &ROP_Python::TimingCondition),
+    theRopTemplates[ROP_TPRERENDER_TPLATE],
+    theRopTemplates[ROP_PRERENDER_TPLATE],
+    theRopTemplates[ROP_LPRERENDER_TPLATE],
+    theRopTemplates[ROP_TPREFRAME_TPLATE],
+    theRopTemplates[ROP_PREFRAME_TPLATE],
+    theRopTemplates[ROP_LPREFRAME_TPLATE],
+    theRopTemplates[ROP_TPOSTFRAME_TPLATE],
+    theRopTemplates[ROP_POSTFRAME_TPLATE],
+    theRopTemplates[ROP_LPOSTFRAME_TPLATE],
+    theRopTemplates[ROP_TPOSTRENDER_TPLATE],
+    theRopTemplates[ROP_POSTRENDER_TPLATE],
+    theRopTemplates[ROP_LPOSTRENDER_TPLATE],
     PRM_Template()
 };
 
@@ -172,6 +174,26 @@ public:
 #else
         ROP_Python::PythonEditor.addTokenValue(PRM_SpareData::getEditorLinesRangeToken(), "20");
 #endif
+        
+        ROP_Python::Parameters[ 8].setInvisible(true);
+        ROP_Python::Parameters[ 9].setInvisible(true);
+        ROP_Python::Parameters[10].setInvisible(true);
+        ROP_Python::Parameters[10].setDefault(0, PRM_Default(0.0, "python"));
+        
+        ROP_Python::Parameters[11].setInvisible(true);
+        ROP_Python::Parameters[12].setInvisible(true);
+        ROP_Python::Parameters[13].setInvisible(true);
+        ROP_Python::Parameters[13].setDefault(0, PRM_Default(0.0, "python"));
+        
+        ROP_Python::Parameters[14].setInvisible(true);
+        ROP_Python::Parameters[15].setInvisible(true);
+        ROP_Python::Parameters[16].setInvisible(true);
+        ROP_Python::Parameters[16].setDefault(0, PRM_Default(0.0, "python"));
+        
+        ROP_Python::Parameters[17].setInvisible(true);
+        ROP_Python::Parameters[18].setInvisible(true);
+        ROP_Python::Parameters[19].setInvisible(true);
+        ROP_Python::Parameters[19].setDefault(0, PRM_Default(0.0, "python"));
     }
     
     ~StaticInitializer()
@@ -187,8 +209,8 @@ DLLEXPORT void newDriverOperator(OP_OperatorTable* table)
                                       "Python",
                                       ROP_Python::Create,
                                       ROP_Python::Parameters,
-                                      1,
-                                      1,
+                                      0,
+                                      9999,
                                       ROP_Python::Variables,
                                       0);
     op->setIconName("SOP_python");
