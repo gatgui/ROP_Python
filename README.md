@@ -10,7 +10,7 @@ git submodule update --init
 ```
 
 To build using a standard houdini install:
-``bash
+```bash
 scons with-houdini=15.5.565
 ```
 
@@ -18,7 +18,8 @@ To build using a non standard houdini installation directory:
 ```bash
 scons with-houdini=/usr/local/sidefix/houdini/15.5.565
 ```
-*Note*: On OSX, this should be the path of the Houdini Framework
+
+*Note: On OSX, this should be the path of the Houdini Framework*
 
 To list all available build targets and options:
 ```bash
